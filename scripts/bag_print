@@ -6,7 +6,9 @@ import argparse
 import logging
 
 import rosbag_pandas
+import numpy as np
 
+import pykst as kst
 
 def build_parser():
     """
@@ -18,12 +20,116 @@ def build_parser():
                         required=True, type=str)
     parser.add_argument('-k', '--key',
                         help='Key you would like to print',
-                        required=True, nargs='*')
+                        required=False, nargs='*')
     parser.add_argument('-v', '--verbose',
                         help="Log verbose",
                         default=False, action="store_true")
     return parser
 
+def reindex(a,b):
+    print("a",len(a.index),"b",len(b.index))
+    if (len(a.index) > len(b.index)):
+        b = b.reindex(index = a.index, method = 'bfill')
+        a = a.fillna(method="bfill")
+    else:
+        a = a.reindex(index = b.index, method = 'bfill')
+        b = b.fillna(method="bfill")
+    return [a,b]
+
+def graph_accelerations(df1, channels):
+
+    #df1['jx_avg'] = (df1[channels[0]].dropna()+df1[channels[0]].dropna().shift(1).fillna(0))*0.01/2
+    #df1['jy_avg'] = (df1[channels[1]].dropna()+df1[channels[1]].dropna().shift(1).fillna(0))*0.01/2
+    #df1['jz_avg'] = (df1[channels[2]].dropna()+df1[channels[2]].dropna().shift(1).fillna(0))*0.01/2
+    df1['jx_avg'] = (df1[channels[0]])*0.01
+    df1['jy_avg'] = (df1[channels[1]])*0.01
+    df1['jz_avg'] = (df1[channels[2]])*0.01
+    df1['jx_int'] =  df1['jx_avg']#.cumsum()
+    df1['jy_int'] =  df1['jy_avg']#.cumsum()
+    df1['jz_int'] =  df1['jz_avg']#.cumsum()
+
+    j_int_x = np.array(df1[channels[0]].values)
+    j_int_x_time = np.array(df1[channels[0]].index)
+    j_int_y = np.array(df1[channels[1]].values)
+    j_int_y_time = np.array(df1[channels[1]].index)
+    j_int_z = np.array(df1[channels[2]].values)
+    j_int_z_time = np.array(df1[channels[2]].index)
+
+    """
+    j_int_x = np.array(df1['jx_int'].values)
+    j_int_x_time = np.array(df1['jx_int'].index)
+    j_int_y = np.array(df1['jy_int'].values)
+    j_int_y_time = np.array(df1['jy_int'].index)
+    j_int_z = np.array(df1['jz_int'].values)
+    j_int_z_time = np.array(df1['jz_int'].index)
+    """
+
+    a_x = np.array(df1[channels[3]].dropna().values)
+    a_x_time = np.array(df1[channels[3]].dropna().index)
+    a_y = np.array(df1[channels[4]].dropna().values)
+    a_y_time = np.array(df1[channels[4]].dropna().index)
+    a_z = np.array(df1[channels[5]].dropna().values)
+    a_z_time = np.array(df1[channels[5]].dropna().index)
+
+    p1 = client.new_plot()
+    add_curves_to_kst([j_int_x_time,j_int_x,a_x_time,a_x],["time","j_int_x","time","a_x"],p1)
+    p2 = client.new_plot()
+    add_curves_to_kst([j_int_y_time,j_int_y,a_y_time,a_y],["time","j_int_y","time","a_y"],p2)
+    p3 = client.new_plot()
+    add_curves_to_kst([j_int_z_time,j_int_z,a_z_time,a_z],["time","j_int_z","time","a_z"],p3)
+    
+def graph_accelerations2(df1, channels):
+
+    j_x = df1[channels[0]].dropna()
+    j_y = df1[channels[1]].dropna()
+    j_z = df1[channels[2]].dropna()
+
+    a_x = df1[channels[3]].dropna()
+    a_y = df1[channels[4]].dropna()
+    a_z = df1[channels[5]].dropna()
+
+    j_x_int = (j_x*0.01).cumsum()
+    j_y_int = (j_y*0.01).cumsum()
+    j_z_int = (j_z*0.01).cumsum()
+
+    #j_x, a_x = reindex(j_x, a_x)
+    #j_y, a_y = reindex(j_y, a_y)
+    #j_z, a_z = reindex(j_z, a_z)
+
+    j_x_vals = np.array(j_x_int.values)
+    j_x_time = np.array(j_x_int.index)
+    j_y_vals = np.array(j_y_int.values)
+    j_y_time = np.array(j_y_int.index)
+    j_z_vals = np.array(j_z_int.values)
+    j_z_time = np.array(j_z_int.index)
+
+    a_x_vals = np.array(a_x.values)
+    a_x_time = np.array(a_x.index)
+    a_y_vals = np.array(a_y.values)
+    a_y_time = np.array(a_y.index)
+    a_z_vals = np.array(a_z.values)
+    a_z_time = np.array(a_z.index)
+
+    p1 = client.new_plot()
+    add_curves_to_kst([j_x_time,j_x_vals,a_x_time,a_x_vals],["time","\int j_x","time","a_x"],p1)    
+    p2 = client.new_plot()
+    add_curves_to_kst([j_y_time,j_y_vals,a_y_time,a_y_vals],["time","\int j_y","time","a_y"],p2)
+    p3 = client.new_plot()
+    add_curves_to_kst([j_z_time,j_z_vals,a_z_time,a_z_vals],["time","\int j_z","time","a_z"],p3)
+
+def add_curves_to_kst(pairs, name_pairs, plot):
+
+    index = np.arange(0,len(pairs),2)
+
+    for i in index:
+        x1 = np.array(pairs[i])
+        y1 = np.array(pairs[i+1])
+
+        V1 = client.new_editable_vector(x1, name=name_pairs[i]) # the name is for the label
+        V2 = client.new_editable_vector(y1, name=name_pairs[i+1]) # the name is for the label  
+
+        c1 = client.new_curve(V1, V2)
+        plot.add(c1)
 
 if __name__ == '__main__':
     parser = build_parser()
@@ -31,7 +137,9 @@ if __name__ == '__main__':
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-
-    topics = rosbag_pandas.topics_from_keys(args.key)
+    channels = ["/riseq/uav/jerk/vector/x", "/riseq/uav/jerk/vector/y", "/riseq/uav/jerk/vector/z", "/riseq/uav/desired_orientation/pose/position/x", "/riseq/uav/desired_orientation/pose/position/y", "/riseq/uav/desired_orientation/pose/position/z"]
+    topics = rosbag_pandas.topics_from_keys(channels)
     df = rosbag_pandas.bag_to_dataframe(args.bag, include=topics)
-    print(df.filter(items=args.key).to_string())
+    #print(df.filter(items=args.key).to_string())
+    client=kst.Client("NumpyVector")
+    graph_accelerations2(df, channels)
